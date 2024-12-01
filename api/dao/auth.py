@@ -32,16 +32,6 @@ class AuthDAO:
     # tag::register[]
     def register(self, email, plain_password, name):
 
-        def create_email_constraint(tx):
-            tx.run(
-                """
-                CREATE CONSTRAINT UserEmailUnique
-                IF NOT EXISTS
-                FOR (user:User)
-                REQUIRE user.email IS UNIQUE
-                """
-            )
-
         def create_user(tx, email, encrypted, name):
             result = tx.run(
                 """
