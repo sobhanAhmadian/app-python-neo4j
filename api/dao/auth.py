@@ -9,11 +9,13 @@ from api.exceptions.validation import ValidationException
 
 from neo4j.exceptions import ConstraintError
 
+
 class AuthDAO:
     """
     The constructor expects an instance of the Neo4j Driver, which will be
     used to interact with Neo4j.
     """
+
     def __init__(self, driver, jwt_secret):
         self.driver = driver
         self.jwt_secret = jwt_secret
@@ -26,28 +28,55 @@ class AuthDAO:
     The properties also be used to generate a JWT `token` which should be included
     with the returned user.
     """
+
     # tag::register[]
     def register(self, email, plain_password, name):
-        encrypted = bcrypt.hashpw(plain_password.encode("utf8"), bcrypt.gensalt()).decode('utf8')
 
-        # TODO: Handle unique constraint error
-        if email != "graphacademy@neo4j.com":
-            raise ValidationException(
-                f"An account already exists with the email address {email}",
-                {"email": "An account already exists with this email"}
+        def create_email_constraint(tx):
+            tx.run(
+                """
+                CREATE CONSTRAINT UserEmailUnique
+                IF NOT EXISTS
+                FOR (user:User)
+                REQUIRE user.email IS UNIQUE
+                """
             )
 
-        # Build a set of claims
-        payload = {
-            "userId": "00000000-0000-0000-0000-000000000000",
-            "email": email,
-            "name": name,
-        }
+        def create_user(tx, email, encrypted, name):
+            result = tx.run(
+                """
+                CREATE (u: User {userId: randomUUID(), email: $email, password: $encrypted, name: $name})
+                RETURN u
+                """,
+                email=email,
+                encrypted=encrypted,
+                name=name,
+            ).single()
 
-        # Generate Token
-        payload["token"] = self._generate_token(payload)
+            return result
 
-        return payload
+        encrypted = bcrypt.hashpw(
+            plain_password.encode("utf8"), bcrypt.gensalt()
+        ).decode("utf8")
+
+        try:
+            with self.driver.session() as session:
+                result = session.execute_write(create_user, email, encrypted, name)
+                user = result["u"]
+
+                payload = {
+                    "userId": user["userId"],
+                    "email": user["email"],
+                    "name": user["name"],
+                }
+
+                # Generate Token
+                payload["token"] = self._generate_token(payload)
+
+                return payload
+        except ConstraintError as e:
+            raise ValidationException(e.message, {"email": e.message})
+
     # end::register[]
 
     """
@@ -59,12 +88,13 @@ class AuthDAO:
     an encoded JWT token with a set of 'claims'.
 
     {
-      userId: 'some-random-uuid',
-      email: 'graphacademy@neo4j.com',
-      name: 'GraphAcademy User',
-      token: '...'
+        userId: 'some-random-uuid',
+        email: 'graphacademy@neo4j.com',
+        name: 'GraphAcademy User',
+        token: '...'
     }
     """
+
     # tag::authenticate[]
     def authenticate(self, email, plain_password):
         # TODO: Implement Login functionality
@@ -82,12 +112,14 @@ class AuthDAO:
             return payload
         else:
             return False
+
     # end::authenticate[]
 
     """
     This method should take the claims encoded into a JWT token and return
     the information needed to authenticate this user against the database.
     """
+
     # tag::generate[]
     def _generate_token(self, payload):
         iat = datetime.utcnow()
@@ -95,18 +127,16 @@ class AuthDAO:
         payload["sub"] = payload["userId"]
         payload["iat"] = iat
         payload["nbf"] = iat
-        payload["exp"] = iat + current_app.config.get('JWT_EXPIRATION_DELTA')
+        payload["exp"] = iat + current_app.config.get("JWT_EXPIRATION_DELTA")
 
-        return jwt.encode(
-            payload,
-            self.jwt_secret,
-            algorithm='HS256'
-        )
+        return jwt.encode(payload, self.jwt_secret, algorithm="HS256")
+
     # end::generate[]
 
     """
     This method will attemp to decode a JWT token
     """
+
     # tag::decode[]
     def decode_token(auth_token, jwt_secret):
         try:
@@ -116,4 +146,5 @@ class AuthDAO:
             return None
         except jwt.InvalidTokenError:
             return None
+
     # end::decode[]
