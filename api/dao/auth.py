@@ -87,21 +87,40 @@ class AuthDAO:
 
     # tag::authenticate[]
     def authenticate(self, email, plain_password):
-        # TODO: Implement Login functionality
-        if email == "graphacademy@neo4j.com" and plain_password == "letmein":
-            # Build a set of claims
+
+        def get_user(tx, email):
+            result = tx.run(
+                """
+                MATCH (u:User {email: $email})
+                RETURN u
+                """,
+                email=email,
+            ).single()
+
+            if result is None:
+                return None
+            else:
+                return result["u"]
+
+        with self.driver.session() as session:
+            user = session.execute_read(get_user, email)
+
+            if user is None:
+                return False
+            
+            if not bcrypt.checkpw(plain_password.encode("utf8"), user.get("password").encode("utf8")):
+                return False
+
             payload = {
-                "userId": "00000000-0000-0000-0000-000000000000",
-                "email": email,
-                "name": "GraphAcademy User",
+                "userId": user["userId"],
+                "email": user["email"],
+                "name": user["name"],
             }
 
             # Generate Token
             payload["token"] = self._generate_token(payload)
-
+            
             return payload
-        else:
-            return False
 
     # end::authenticate[]
 
