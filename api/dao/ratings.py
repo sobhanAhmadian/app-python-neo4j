@@ -18,16 +18,35 @@ class RatingDAO:
     """
     # tag::add[]
     def add(self, user_id, movie_id, rating):
-        # TODO: Create function to save the rating in the database
-        # TODO: Call the function within a write transaction
-        # TODO: Return movie details along with a rating
 
-        return {
-            **goodfellas,
-            "rating": rating
-        }
+        def create_rating(tx, user_id, movie_id, rating):
+            result = tx.run(
+                """
+                MATCH (u:User {userId: $user_id})
+                MATCH (m:Movie {tmdbId: $movie_id})
+                MERGE (u)-[r:RATED]->(m)
+                SET r.rating = $rating,
+                    r.timestamp = timestamp()
+                RETURN m { .*, rating: r.rating } AS movie
+                """,
+                user_id=user_id,
+                movie_id=movie_id,
+                rating=rating,
+            ).single()
+
+            return result
+
+        with self.driver.session() as session:
+            result = session.write_transaction(create_rating, user_id, movie_id, rating)
+
+            if result is None:
+                raise NotFoundException()
+
+            movie = result["movie"]
+
+            return movie
+
     # end::add[]
-
 
     """
     Return a paginated list of reviews for a Movie.
