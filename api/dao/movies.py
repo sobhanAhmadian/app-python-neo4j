@@ -70,11 +70,35 @@ class MovieDAO:
     def get_by_genre(
         self, name, sort="title", order="ASC", limit=6, skip=0, user_id=None
     ):
-        # TODO: Get Movies in a Genre
-        # TODO: The Cypher string will be formated so remember to escape the braces: {{name: $name}}
-        # MATCH (m:Movie)-[:IN_GENRE]->(:Genre {name: $name})
+        def get_movies(tx, sort, order, limit, skip, user_id, genre_name):
+            favorites = self.get_user_favorites(tx, user_id)
 
-        return popular[skip:limit]
+            result = tx.run(
+                """
+                MATCH (m:Movie)-[:IN_GENRE]->(:Genre {{name: $name}})
+                WHERE m.`{0}` IS NOT NULL
+                RETURN m {{ 
+                    .*,
+                    favorite: m.tmdbId IN $favorites
+                }} AS movie
+                ORDER BY m.`{0}` {1}
+                SKIP $skip
+                LIMIT $limit
+                """.format(
+                    sort, order
+                ),
+                skip=skip,
+                limit=limit,
+                user_id=user_id,
+                favorites=favorites,
+                name=genre_name,
+            )
+            return [record.value("movie") for record in result]
+
+        with self.driver.session() as session:
+            return session.execute_read(
+                get_movies, sort, order, limit, skip, user_id, genre_name=name
+            )
 
     # end::getByGenre[]
 
@@ -95,11 +119,36 @@ class MovieDAO:
     def get_for_actor(
         self, id, sort="title", order="ASC", limit=6, skip=0, user_id=None
     ):
-        # TODO: Get Movies for an Actor
-        # TODO: The Cypher string will be formated so remember to escape the braces: {{tmdbId: $id}}
-        # MATCH (:Person {tmdbId: $id})-[:ACTED_IN]->(m:Movie)
 
-        return popular[skip:limit]
+        def get_movies(tx, sort, order, limit, skip, user_id, actor_id):
+            favorites = self.get_user_favorites(tx, user_id)
+
+            result = tx.run(
+                """
+                MATCH (p:Person {{tmdbId: $actor_id}})-[:ACTED_IN]->(m:Movie)
+                WHERE m.`{0}` IS NOT NULL
+                RETURN m {{ 
+                    .*,
+                    favorite: m.tmdbId IN $favorites
+                }} AS movie
+                ORDER BY m.`{0}` {1}
+                SKIP $skip
+                LIMIT $limit
+                """.format(
+                    sort, order
+                ),
+                skip=skip,
+                limit=limit,
+                user_id=user_id,
+                favorites=favorites,
+                actor_id=actor_id,
+            )
+            return [record.value("movie") for record in result]
+
+        with self.driver.session() as session:
+            return session.execute_read(
+                get_movies, sort, order, limit, skip, user_id, actor_id=id
+            )
 
     # end::getForActor[]
 
@@ -120,11 +169,36 @@ class MovieDAO:
     def get_for_director(
         self, id, sort="title", order="ASC", limit=6, skip=0, user_id=None
     ):
-        # TODO: Get Movies directed by a Person
-        # TODO: The Cypher string will be formated so remember to escape the braces: {{name: $name}}
-        # MATCH (:Person {tmdbId: $id})-[:DIRECTED]->(m:Movie)
 
-        return popular[skip:limit]
+        def get_movies(tx, sort, order, limit, skip, user_id, director_id):
+            favorites = self.get_user_favorites(tx, user_id)
+
+            result = tx.run(
+                """
+                MATCH (p:Person {{tmdbId: $director_id}})-[:DIRECTED]->(m:Movie)
+                WHERE m.`{0}` IS NOT NULL
+                RETURN m {{ 
+                    .*,
+                    favorite: m.tmdbId IN $favorites
+                }} AS movie
+                ORDER BY m.`{0}` {1}
+                SKIP $skip
+                LIMIT $limit
+                """.format(
+                    sort, order
+                ),
+                skip=skip,
+                limit=limit,
+                user_id=user_id,
+                favorites=favorites,
+                director_id=director_id,
+            )
+            return [record.value("movie") for record in result]
+
+        with self.driver.session() as session:
+            return session.execute_read(
+                get_movies, sort, order, limit, skip, user_id, director_id=id
+            )
 
     # end::getForDirector[]
 
