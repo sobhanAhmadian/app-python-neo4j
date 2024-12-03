@@ -214,8 +214,34 @@ class MovieDAO:
 
     # tag::findById[]
     def find_by_id(self, id, user_id=None):
-        # TODO: Find a movie by its ID
-        # MATCH (m:Movie {tmdbId: $id})
+
+        def get_movies(tx, user_id, id):
+            favorites = self.get_user_favorites(tx, user_id)
+
+            result = tx.run(
+                """
+                MATCH (m:Movie {tmdbId: $id})
+                RETURN m {
+                    .*,
+                    actors: [ (a)-[r:ACTED_IN]->(m) | a { .*, role: r.role } ],
+                    directors: [ (d)-[:DIRECTED]->(m) | d { .* } ],
+                    genres: [ (m)-[:IN_GENRE]->(g) | g { .name }],
+                    ratingCount: count{ (m)<-[:RATED]-() },
+                    favorite: m.tmdbId IN $favorites
+                } AS movie
+                LIMIT 1
+                """,
+                favorites=favorites,
+                id=id,
+            ).single()
+
+            if result is None:
+                raise NotFoundException()
+
+            return result.value("movie")
+
+        with self.driver.session() as session:
+            return session.execute_read(get_movies, user_id, id=id)
 
         return goodfellas
 
