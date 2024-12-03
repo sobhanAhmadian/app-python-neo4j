@@ -263,9 +263,38 @@ class MovieDAO:
 
     # tag::getSimilarMovies[]
     def get_similar_movies(self, id, limit=6, skip=0, user_id=None):
-        # TODO: Get similar movies from Neo4j
 
-        return popular[skip:limit]
+        def get_movies(tx, limit, skip, user_id, id):
+            favorites = self.get_user_favorites(tx, user_id)
+
+            result = tx.run(
+                """
+                MATCH (:Movie {tmdbId: $id})-[:IN_GENRE|ACTED_IN|DIRECTED]->()<-[:IN_GENRE|ACTED_IN|DIRECTED]-(m)
+                WHERE m.imdbRating IS NOT NULL
+
+                WITH m, count(*) AS inCommon
+                WITH m, inCommon, m.imdbRating * inCommon AS score
+                ORDER BY score DESC
+
+                SKIP $skip
+                LIMIT $limit
+
+                RETURN m {
+                    .*,
+                    score: score,
+                    favorite: m.tmdbId IN $favorites
+                } AS movie
+                """,
+                id = id,
+                skip=skip,
+                limit=limit,
+                user_id=user_id,
+                favorites=favorites,
+            )
+            return [record.value("movie") for record in result]
+
+        with self.driver.session() as session:
+            return session.execute_read(get_movies, limit, skip, user_id, id) 
 
     # end::getSimilarMovies[]
 
