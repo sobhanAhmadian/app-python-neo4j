@@ -25,11 +25,16 @@ class MovieDAO:
     # tag::all[]
     def all(self, sort, order, limit=6, skip=0, user_id=None):
         def get_movies(tx, sort, order, limit, skip, user_id):
+            favorites = self.get_user_favorites(tx, user_id)
+
             result = tx.run(
                 """
                 MATCH (m:Movie)
                 WHERE m.`{0}` IS NOT NULL
-                RETURN m {{ .* }} AS movie
+                RETURN m {{ 
+                    .*,
+                    favorite: m.tmdbId IN $favorites
+                }} AS movie
                 ORDER BY m.`{0}` {1}
                 SKIP $skip
                 LIMIT $limit
@@ -39,6 +44,7 @@ class MovieDAO:
                 skip=skip,
                 limit=limit,
                 user_id=user_id,
+                favorites=favorites,
             )
             return [record.value("movie") for record in result]
 
@@ -170,6 +176,17 @@ class MovieDAO:
 
     # tag::getUserFavorites[]
     def get_user_favorites(self, tx, user_id):
-        return []
+
+        if user_id is None:
+            return []
+
+        result = tx.run(
+            """
+            MATCH (:User {userId: $user_id})-[:HAS_FAVORITE]->(m:Movie)
+            RETURN m.tmdbId AS id
+            """,
+            user_id=user_id,
+        )
+        return [record["id"] for record in result]
 
     # end::getUserFavorites[]
