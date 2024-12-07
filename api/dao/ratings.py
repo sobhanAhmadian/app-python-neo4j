@@ -9,13 +9,15 @@ class RatingDAO:
     The constructor expects an instance of the Neo4j Driver, which will be
     used to interact with Neo4j.
     """
+
     def __init__(self, driver):
-        self.driver=driver
+        self.driver = driver
 
     """
     Add a relationship between a User and Movie with a `rating` property.
     The `rating` parameter should be converted to a Neo4j Integer.
     """
+
     # tag::add[]
     def add(self, user_id, movie_id, rating):
 
@@ -56,10 +58,35 @@ class RatingDAO:
     Results should be limited to the number passed as `limit`.
     The `skip` variable should be used to skip a certain number of rows.
     """
-    # tag::forMovie[]
-    def for_movie(self, id, sort = 'timestamp', order = 'ASC', limit = 6, skip = 0):
-        # TODO: Get ratings for a Movie
-        # TODO: Remember to escape the braces in the cypher query with double braces: {{ }}
 
-        return ratings
+    # tag::forMovie[]
+    def for_movie(self, id, sort="timestamp", order="ASC", limit=6, skip=0):
+
+        def get_rating(tx, movie_id, sort, order, limit, skip):
+            result = tx.run(
+                """
+                MATCH (u:User)-[r:RATED]->(m:Movie {{tmdbId: $movie_id}})
+                RETURN r {{
+                    .rating,
+                    .timestamp,
+                    user: u {{
+                        .userId,
+                        .name
+                    }}
+                }} AS review
+                ORDER BY r.`{0}` {1}
+                SKIP $skip 
+                LIMIT $limit
+                """.format(
+                    sort, order
+                ),
+                movie_id=movie_id,
+                limit=limit,
+                skip=skip,
+            )
+            return [record["review"] for record in result]
+
+        with self.driver.session() as session:
+            return session.read_transaction(get_rating, id, sort, order, limit, skip)
+
     # end::forMovie[]
